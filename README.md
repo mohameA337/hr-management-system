@@ -60,6 +60,29 @@ curl http://hr.localhost/
 curl http://hr.localhost/api/employees   # any path is routed to public/index.php
 ```
 
+## Frontend (React + Vite)
+
+Requires Node.js 20+.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.development.local   # VITE_USE_MOCKS=true runs without the backend
+npm run dev                               # http://localhost:5173
+```
+
+- The dev server forwards `/api/*` to `http://hr.localhost`, so the backend needs no CORS setup.
+- With `VITE_USE_MOCKS=true`, the app uses a built-in fake API (`src/api/mock.ts`). Log in as
+  `admin@hr.test`, `hr@hr.test`, `manager@hr.test` or `employee@hr.test` with password `password`.
+  Set it to `false` once the real endpoints exist. Production builds never include the mocks.
+- `npm run build` type-checks and builds to `frontend/dist/`.
+
+## Documentation
+
+- `docs/REQUIREMENTS.md`: features, roles and business rules
+- `docs/DATABASE.md`: tables and relationships
+- `docs/API.md`: REST API contract between the backend and the frontend
+
 ## Project structure
 
 ```
@@ -71,6 +94,8 @@ src/               Application code, PSR-4 namespace App\
   Middleware/
 database/migrations/  SQL migrations
 tests/
+docs/              Requirements, database design, API contract
+frontend/          React + Vite single-page app
 ```
 
 ## Security notes
