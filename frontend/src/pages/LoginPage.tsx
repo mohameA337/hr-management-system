@@ -5,6 +5,13 @@ import { useAuth } from '../auth/AuthContext';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
+async function resetDemoData() {
+  if (import.meta.env.VITE_USE_MOCKS !== 'true') return; // keeps the mock out of production builds
+  const { resetMockData } = await import('../api/mock');
+  resetMockData();
+  window.location.reload();
+}
+
 export function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
@@ -79,10 +86,15 @@ export function LoginPage() {
         </button>
 
         {USE_MOCKS && (
-          <p className="login__hint muted">
-            Mock mode: <code>admin@hr.test</code>, <code>hr@hr.test</code>, <code>manager@hr.test</code> or{' '}
-            <code>employee@hr.test</code> with password <code>password</code>.
-          </p>
+          <div className="login__hint muted">
+            <p>
+              Demo mode (fake backend): log in as <code>hr@hr.test</code> (HR) or <code>employee@hr.test</code> (employee) with
+              password <code>password</code>.
+            </p>
+            <button type="button" className="link-button" onClick={() => void resetDemoData()}>
+              Reset demo data
+            </button>
+          </div>
         )}
       </form>
     </div>

@@ -1,42 +1,42 @@
-import type { ReactNode } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { AuthProvider } from './auth/AuthContext';
-import { RequireAuth, RequireRole } from './auth/guards';
+import { RequireAuth, RequireHr } from './auth/guards';
+import { ToastProvider } from './components/Toast';
 import { AppLayout } from './layout/AppLayout';
-import { navigation } from './layout/navigation';
 import { DashboardPage } from './pages/DashboardPage';
+import { EmployeesPage } from './pages/EmployeesPage';
 import { NotFoundPage } from './pages/ErrorPages';
+import { HolidaysPage } from './pages/HolidaysPage';
+import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { LoginPage } from './pages/LoginPage';
-import { PlaceholderPage } from './pages/PlaceholderPage';
-
-// Screens that are built replace their placeholder here, keyed by path.
-const pages: Record<string, ReactNode> = {
-  '/': <DashboardPage />,
-};
+import { MyLeavePage } from './pages/MyLeavePage';
 
 export function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<RequireAuth />}>
-            <Route element={<AppLayout />}>
-              {navigation
-                .flatMap((section) => section.items)
-                .map((item) => (
-                  <Route key={item.path} element={<RequireRole roles={item.roles} />}>
-                    <Route
-                      path={item.path}
-                      element={pages[item.path] ?? <PlaceholderPage title={item.label} phase={item.phase} />}
-                    />
-                  </Route>
-                ))}
-              <Route path="*" element={<NotFoundPage />} />
+      <ToastProvider>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<RequireAuth />}>
+              <Route element={<AppLayout />}>
+                {/* Everyone */}
+                <Route index element={<DashboardPage />} />
+                <Route path="my-leave" element={<MyLeavePage />} />
+                <Route path="holidays" element={<HolidaysPage />} />
+
+                {/* HR only */}
+                <Route element={<RequireHr />}>
+                  <Route path="employees" element={<EmployeesPage />} />
+                  <Route path="leave-requests" element={<LeaveRequestsPage />} />
+                </Route>
+
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
             </Route>
-          </Route>
-        </Routes>
-      </AuthProvider>
+          </Routes>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 }

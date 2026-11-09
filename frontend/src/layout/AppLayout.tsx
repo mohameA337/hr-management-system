@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { ROLE_LABELS } from '../lib/format';
 import { navigationFor } from './navigation';
-
-const ROLE_LABELS = { admin: 'Admin', hr: 'HR', manager: 'Manager', employee: 'Employee' } as const;
 
 export function AppLayout() {
   const { user, logout } = useAuth();
@@ -23,7 +22,7 @@ export function AppLayout() {
             <div key={section.title} className="nav-section">
               <div className="nav-section__title">{section.title}</div>
               {section.items.map((item) => (
-                <NavLink key={item.path} to={item.path} end className="nav-link">
+                <NavLink key={item.path} to={item.path} end={item.path === '/'} className="nav-link">
                   {item.label}
                 </NavLink>
               ))}
@@ -45,7 +44,7 @@ export function AppLayout() {
           </button>
           <div className="topbar__spacer" />
           <div className="topbar__user">
-            <span className="topbar__name">{user.employee.full_name}</span>
+            <span className="topbar__name">{user.full_name}</span>
             <span className="badge">{ROLE_LABELS[user.role]}</span>
           </div>
           <button type="button" className="btn btn--ghost" onClick={() => void logout()}>

@@ -1,20 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, setUnauthorizedHandler, tokenStore } from '../api/client';
-import type { LoginResult, Role, User } from '../api/types';
+import type { Employee, LoginResult, Me } from '../api/types';
 
 interface AuthState {
-  user: User | null;
+  user: Employee | null;
   /** True while restoring the session on page load. */
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  hasRole: (...roles: Role[]) => boolean;
+  isHr: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,8 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     api
-      .get<User>('/auth/me')
-      .then(setUser)
+      .get<Me>('/me')
+      .then((me) => setUser(me.user))
       .catch(() => tokenStore.clear())
       .finally(() => setLoading(false));
   }, []);
@@ -37,18 +37,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   }, []);
 
+  // No logout endpoint (API.md v3): forgetting the token logs out; it expires after 8 hours.
   const logout = useCallback(async () => {
-    try {
-      await api.post('/auth/logout');
-    } finally {
-      tokenStore.clear();
-      setUser(null);
-    }
+    tokenStore.clear();
+    setUser(null);
   }, []);
 
-  const hasRole = useCallback((...roles: Role[]) => !!user && roles.includes(user.role), [user]);
+  const isHr = user?.role === 'hr';
 
-  const value = useMemo(() => ({ user, loading, login, logout, hasRole }), [user, loading, login, logout, hasRole]);
+  const value = useMemo(() => ({ user, loading, login, logout, isHr }), [user, loading, login, logout, isHr]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

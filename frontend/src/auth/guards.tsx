@@ -1,5 +1,4 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
-import type { Role } from '../api/types';
 import { useAuth } from './AuthContext';
 import { ForbiddenPage } from '../pages/ErrorPages';
 
@@ -13,8 +12,8 @@ export function RequireAuth() {
   return <Outlet />;
 }
 
-/** Only the given roles. The backend checks roles too — this only hides screens. */
-export function RequireRole({ roles }: { roles: Role[] }) {
-  const { hasRole } = useAuth();
-  return hasRole(...roles) ? <Outlet /> : <ForbiddenPage />;
+/** HR only. The backend checks the role too — this only hides screens. */
+export function RequireHr() {
+  const { user } = useAuth();
+  return user?.role === 'hr' ? <Outlet /> : <ForbiddenPage />;
 }
