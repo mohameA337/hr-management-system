@@ -1,165 +1,131 @@
 # HR Management System — Database Design
 
-Status: **v2.0 (simplified)** — based on `docs/REQUIREMENTS.md` v2.0.
+Status: **v3.0 (minimal)** — based on `REQUIREMENTS.md` v3.0. MySQL 8.0, InnoDB, `utf8mb4`.
+Database: `hr_management`. **4 tables.**
 
-MySQL 8.0, InnoDB, `utf8mb4`. Database name: `hr_management`. **5 tables.**
-
-## 1. Conventions
-
-| Rule | Example |
-|---|---|
-| Table names: plural, `snake_case` | `leave_requests` |
-| Primary key: `id INT UNSIGNED AUTO_INCREMENT` | `id` |
-| Foreign key: `<singular table>_id` | `employee_id` → `employees.id` |
-| Editable tables have `created_at` and `updated_at` | `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
-| Fixed list of values: `ENUM` | `status ENUM('active','terminated')` |
-| Dates: `DATE`, date-times: `DATETIME` / `TIMESTAMP` | `start_date` |
-
-Records are never hard-deleted, so foreign keys use `ON DELETE RESTRICT` (the MySQL default): the
-database refuses to delete a row that others still point to. Only `auth_tokens` uses `CASCADE`.
-
-## 2. Tables and relationships
-
-| # | Table | Purpose |
-|---|---|---|
-| 1 | `departments` | Company departments |
-| 2 | `employees` | Employee profiles **and** their login (email, password, role) |
-| 3 | `auth_tokens` | Active login tokens |
-| 4 | `leave_types` | Annual and Sick, with days per year |
-| 5 | `leave_requests` | Leave requests and their approval |
+## 1. Tables and relationships
 
 ```mermaid
 erDiagram
-    departments ||--o{ employees : "has"
-    employees   ||--o{ auth_tokens : "logs in with"
-    employees   ||--o{ leave_requests : "submits"
-    leave_types ||--o{ leave_requests : "of type"
-    employees   |o--o{ leave_requests : "reviews"
+    employees ||--o{ auth_tokens : "logs in with"
+    employees ||--o{ leave_requests : "requests"
+    employees |o--o{ leave_requests : "reviews"
+    public_holidays {
+        date holiday_date
+        string name
+    }
 ```
 
-Read `||--o{` as "one … has zero or many …".
+| Table | Purpose |
+|---|---|
+| `employees` | Employee profile **and** login (email, password hash, role) |
+| `auth_tokens` | Active login tokens (hashed) |
+| `leave_requests` | Leave requests and their approval |
+| `public_holidays` | Days not counted as leave (stand-alone list, no foreign keys) |
 
-## 3. Tables in detail
+Conventions: plural `snake_case` table names, `id INT UNSIGNED AUTO_INCREMENT` keys, `<table>_id` foreign
+keys, `created_at` / `updated_at` timestamps. Records are never deleted, so foreign keys use
+`ON DELETE RESTRICT`; only `auth_tokens` cascades.
 
-### 3.1 `departments`
-
-| Column | Type | Null | Notes |
-|---|---|---|---|
-| `id` | INT UNSIGNED PK AI | no | |
-| `name` | VARCHAR(100) | no | **UNIQUE** |
-| `description` | VARCHAR(255) | yes | |
-| `created_at`, `updated_at` | TIMESTAMP | no | |
-
-### 3.2 `employees`
+## 2. `employees`
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | INT UNSIGNED PK AI | no | |
 | `employee_code` | VARCHAR(20) | no | **UNIQUE**, e.g. `EMP-0001` |
-| `first_name` | VARCHAR(50) | no | |
-| `last_name` | VARCHAR(50) | no | |
-| `email` | VARCHAR(150) | no | **UNIQUE** — also the login name |
+| `first_name`, `last_name` | VARCHAR(50) | no | |
+| `email` | VARCHAR(150) | no | **UNIQUE** — the login name |
 | `phone` | VARCHAR(30) | yes | |
-| `job_title` | VARCHAR(100) | no | plain text, e.g. "Backend Developer" |
-| `department_id` | INT UNSIGNED | no | FK → `departments.id` |
+| `job_title` | VARCHAR(100) | no | |
+| `department` | VARCHAR(100) | no | plain text, e.g. "Engineering" |
 | `hire_date` | DATE | no | |
 | `status` | ENUM('active','terminated') | no | default `active` |
-| `termination_date` | DATE | yes | set when terminated |
+| `termination_date` | DATE | yes | set exactly when terminated (CHECK) |
 | `role` | ENUM('hr','employee') | no | default `employee` |
-| `password_hash` | VARCHAR(255) | no | from `password_hash()` |
+| `password_hash` | VARCHAR(255) | no | `password_hash()` — never returned by the API |
 | `last_login_at` | DATETIME | yes | |
 | `created_at`, `updated_at` | TIMESTAMP | no | |
 
-> **Why keep login data in `employees`?** In this version every employee can log in, so a separate
-> `users` table would be a 1-to-1 copy. One table means one insert, no join at login, and nothing to
-> keep in sync. **Never** return `password_hash` from the API.
-
-### 3.3 `auth_tokens`
+## 3. `auth_tokens`
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | INT UNSIGNED PK AI | no | |
-| `employee_id` | INT UNSIGNED | no | FK → `employees.id`, **ON DELETE CASCADE** |
+| `employee_id` | INT UNSIGNED | no | FK → `employees.id`, ON DELETE CASCADE |
 | `token_hash` | CHAR(64) | no | **UNIQUE** — `hash('sha256', $token)` |
-| `expires_at` | DATETIME | no | e.g. now + 8 hours |
+| `expires_at` | DATETIME | no | login time + 8 hours |
 | `created_at` | TIMESTAMP | no | |
 
-> The client receives the random token once at login; the database stores only its SHA-256 hash, so
-> a leaked database can't be used to log in. Each request: hash the incoming token and look it up
-> (`WHERE token_hash = ? AND expires_at > NOW()`). Logout = delete the row.
+The client gets the real token once; the database stores only its hash. Each request: hash the incoming
+token and find a row with `expires_at` in the future (pass the current time from PHP).
 
-### 3.4 `leave_types`
-
-| Column | Type | Null | Notes |
-|---|---|---|---|
-| `id` | INT UNSIGNED PK AI | no | |
-| `name` | VARCHAR(50) | no | **UNIQUE** |
-| `days_per_year` | SMALLINT UNSIGNED | no | |
-
-Filled once by the seed script: **Annual (21)**, **Sick (10)**. There is no API to change them.
-
-### 3.5 `leave_requests`
+## 4. `leave_requests`
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | INT UNSIGNED PK AI | no | |
-| `employee_id` | INT UNSIGNED | no | FK → `employees.id` — who is going on leave |
-| `leave_type_id` | INT UNSIGNED | no | FK → `leave_types.id` |
-| `start_date` | DATE | no | |
-| `end_date` | DATE | no | same year as `start_date` |
-| `days` | SMALLINT UNSIGNED | no | working days (Mon–Fri), calculated by PHP at submit |
+| `employee_id` | INT UNSIGNED | no | FK → `employees.id` |
+| `type` | ENUM('annual','sick') | no | rules per type are fixed in the code (REQUIREMENTS LEAVE-1) |
+| `start_date`, `end_date` | DATE | no | same year, end ≥ start (CHECK) |
+| `days` | SMALLINT UNSIGNED | no | working days, calculated by PHP at submit (> 0, CHECK) |
 | `reason` | VARCHAR(255) | yes | |
 | `status` | ENUM('pending','approved','rejected','cancelled') | no | default `pending` |
 | `reviewed_by` | INT UNSIGNED | yes | FK → `employees.id` — the HR person who decided |
-| `review_comment` | VARCHAR(255) | yes | required when rejecting (checked in PHP) |
+| `review_comment` | VARCHAR(255) | yes | required when rejecting (PHP) |
 | `reviewed_at` | DATETIME | yes | |
 | `created_at`, `updated_at` | TIMESTAMP | no | |
 
-Extra index: (`employee_id`, `status`) and (`status`).
+Indexes: (`employee_id`, `status`), (`status`).
 
-## 4. Remaining leave — calculated, not stored
-
-There is no balances table. The remaining days for one employee, type and year are:
+**Remaining days** are calculated, not stored:
 
 ```sql
-SELECT lt.days_per_year - COALESCE(SUM(lr.days), 0) AS remaining_days
-FROM leave_types lt
-LEFT JOIN leave_requests lr
-       ON lr.leave_type_id = lt.id
-      AND lr.employee_id = ?
-      AND lr.status = 'approved'
-      AND YEAR(lr.start_date) = ?
-WHERE lt.id = ?
-GROUP BY lt.id;
+SELECT COALESCE(SUM(days), 0) AS used_days
+FROM leave_requests
+WHERE employee_id = ? AND type = ? AND status = 'approved' AND YEAR(start_date) = ?;
+-- remaining = days per year (21 or 10) − used_days
 ```
 
-- No carry-over and no yearly reset job: a new year simply has no approved requests yet.
-- Can never get out of sync, because nothing is copied.
+Cancelling approved leave returns the days automatically, because the row is no longer `approved`.
 
-## 5. Migrations and seed data
+## 5. `public_holidays`
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | INT UNSIGNED PK AI | no | |
+| `holiday_date` | DATE | no | **UNIQUE** |
+| `name` | VARCHAR(100) | no | |
+| `created_at` | TIMESTAMP | no | |
+
+Filled by `database/seeds/001_public_holidays.sql`. Edit that file and run `php bin/seed.php` to change them.
+
+## 6. Counting leave days
+
+`days` = the dates from `start_date` to `end_date` that are not Saturday/Sunday and not in `public_holidays`.
+Load the holidays in the range once (`WHERE holiday_date BETWEEN ? AND ?`), then loop over the dates with
+`DateTimeImmutable` (`format('N') >= 6` = weekend). The same helper answers "what is 3 working days from
+today?" for the notice rule.
+
+## 7. Files and commands
 
 ```
-database/migrations/
-  001_create_departments.sql
-  002_create_employees.sql
-  003_create_auth_tokens.sql
-  004_create_leave_types.sql
-  005_create_leave_requests.sql
-database/seeds/
-  001_leave_types.sql        Annual 21, Sick 10
-  002_first_hr_user.php      one department + one HR employee; password typed when running it
+database/migrations/001_create_employees.sql
+                    002_create_auth_tokens.sql
+                    003_create_leave_requests.sql
+                    004_create_public_holidays.sql
+database/seeds/001_public_holidays.sql
+bin/migrate.php          php bin/migrate.php        runs migrations that haven't run yet
+bin/seed.php             php bin/seed.php           (re)loads the seed files
+bin/create-hr-user.php   php bin/create-hr-user.php creates the first HR login (password typed, never stored)
 ```
 
-Each table comes after the tables it points to. The first HR password is never written in a
-committed file.
-
-## 6. Where each rule is enforced
+## 8. Where each rule is enforced
 
 | Rule | Database | PHP |
 |---|:-:|:-:|
-| Unique email / employee code / department name | ✅ UNIQUE | friendly `409` message |
-| Can't delete a department that has employees | ✅ FK RESTRICT | friendly `409` message |
-| Dates valid, same year, at least one working day | | ✅ |
-| No overlap, enough remaining days | | ✅ |
-| Reject needs a comment; HR can't review own request | | ✅ |
-| Terminated employees can't log in | | ✅ |
+| Unique employee code / email / holiday date | ✅ UNIQUE | friendly `409` |
+| Termination date set exactly when terminated, ≥ hire date | ✅ CHECK | `422` message |
+| Leave dates in order and in one year, days > 0 | ✅ CHECK | `422` message |
+| Notice / backdate limits, overlap, balance | | ✅ |
+| Who may approve, reject, cancel; reject needs a comment | | ✅ |
+| Terminating cancels pending and later approved leave | | ✅ (transaction) |

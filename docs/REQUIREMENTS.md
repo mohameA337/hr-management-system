@@ -1,121 +1,91 @@
 # HR Management System — Requirements
 
-Status: **v2.0 (simplified)** — replaces v1.0. The full v1.0 scope (attendance, payroll, managers,
-positions, …) is kept in Git history and listed under "Later versions" below.
+Status: **v3.0 (minimal)** — 4 tables, 9 endpoints. Earlier, larger designs are in Git history and listed
+under "Later versions".
 
 ## 1. Overview
 
-A small web-based HR system for one company. HR staff manage departments and employees and
-approve leave; employees log in to request leave and follow its status.
+A small web-based HR system for one company. HR adds employees and approves leave; employees log in to
+request leave and follow its status.
 
-- **Purpose:** learning / portfolio project — clean, understandable code over feature breadth.
+- **Purpose:** learning / portfolio project — a small backend done well.
 - **Backend:** plain PHP 8.3 REST API (JSON), MySQL 8.0 — built by the project owner.
 - **Frontend:** React + Vite single-page app — consumes the REST API only.
 - **Contract between them:** `docs/API.md`.
 
 ## 2. Roles
 
-| Role | Who | Can do |
-|---|---|---|
-| **HR** | HR staff (also acts as system admin) | Everything: manage departments and employees, approve/reject leave, plus everything an employee can do |
-| **Employee** | Every staff member | Log in, see own profile and leave balance, request and cancel leave, change own password |
+| Role | Can do |
+|---|---|
+| **HR** | Add, edit and terminate employees (and set their role and password); see all leave requests; approve or reject them; plus everything an employee can do |
+| **Employee** | Log in, see own profile and leave balance, request leave, cancel own leave, see public holidays |
 
-Every employee record is also a login account (email + password). Terminated employees cannot log in.
-
-### Permission matrix
-
-| Action | HR | Employee |
-|---|:-:|:-:|
-| Manage departments | ✅ | — |
-| Create / edit / terminate employees, set role and password | ✅ | — |
-| View all employees | ✅ | — |
-| View own profile, change own password | ✅ | ✅ |
-| Request / cancel own leave, view own balance | ✅ | ✅ |
-| View all leave requests, approve / reject | ✅ (not own) | — |
-| Dashboard | company overview | personal |
+Every employee is also a login account (email + password). Terminated employees cannot log in.
 
 ## 3. Functional requirements
 
-### 3.1 Authentication (AUTH)
+### 3.1 Login (AUTH)
 
-- **AUTH-1** Users log in with email + password; the API returns a token used on later requests.
+- **AUTH-1** Users log in with email + password and receive a token used on every later request. Tokens
+  expire after 8 hours.
 - **AUTH-2** Passwords are stored hashed (`password_hash`), never in plain text.
-- **AUTH-3** Users can log out (token deleted) and change their own password.
+- **AUTH-3** Logging out forgets the token in the browser. HR resets forgotten passwords.
 - **AUTH-4** Every endpoint except login requires a valid token and checks the role.
-- **AUTH-5** Terminated employees cannot log in, and their tokens are deleted.
 
-### 3.2 Departments (DEPT)
+### 3.2 Employees (EMP)
 
-- **DEPT-1** HR creates, edits and lists departments: name (unique), description.
-- **DEPT-2** A department cannot be deleted while employees belong to it.
+- **EMP-1** HR adds an employee: employee code (unique), first/last name, email (unique), phone, job title,
+  department (text), hire date, role (`hr` / `employee`), initial password.
+- **EMP-2** HR edits these fields and can reset the password. The employee code cannot change.
+- **EMP-3** HR terminates an employee by setting status `terminated` and a termination date. This also logs
+  them out and cancels their pending leave and approved leave that starts after the termination date.
+  Records are never deleted, and a terminated employee cannot be reactivated.
+- **EMP-4** HR cannot change their own role or terminate themselves.
+- **EMP-5** Employee list with search (name, code, email), status filter and pagination.
 
-### 3.3 Employees (EMP)
+### 3.3 Leave (LEAVE)
 
-- **EMP-1** HR creates an employee: employee code (unique), first/last name, email (unique),
-  phone, job title, department, hire date, role (`hr` / `employee`), initial password.
-- **EMP-2** HR edits any of these fields and can reset the password. The employee code cannot change.
-- **EMP-3** HR terminates an employee (status `terminated` + termination date). Records are never deleted.
-- **EMP-4** Employee list with search (name, code, email), filters (department, status) and pagination.
-- **EMP-5** Employee detail shows the profile, leave balance and leave history.
+- **LEAVE-1** Two leave types, fixed in the code:
 
-### 3.4 Leave (LEAVE)
+  | Type | Days per year | Kind | Notice | May start in the past |
+  |---|---|---|---|---|
+  | `annual` | 21 | planned | at least **3 working days** ahead | no |
+  | `sick` | 10 | unplanned | none | up to **7 days** back |
 
-- **LEAVE-1** Two leave types, set up once in the database: **Annual** (21 days/year) and **Sick** (10 days/year).
-- **LEAVE-2** Remaining days = days per year − approved days in that calendar year. Unused days do not
-  carry over; a new year starts with the full amount automatically.
-- **LEAVE-3** An employee submits a request: leave type, start date, end date, optional reason.
-- **LEAVE-4** Requested days = working days between start and end (Saturday and Sunday excluded).
-- **LEAVE-5** A request is refused on submit when:
-  the start date is in the past · the end date is before the start date · start and end are in different years ·
-  the range has no working days · it overlaps another pending/approved request of the same employee ·
-  it needs more days than remain.
-- **LEAVE-6** Status flow: `pending` → `approved` | `rejected`; the employee may `cancel` while pending.
-- **LEAVE-7** HR approves (optional comment) or rejects (comment required). HR cannot review their own request.
-- **LEAVE-8** The balance is checked again at approval time.
+- **LEAVE-2** Remaining days = days per year − approved days in that calendar year. No carry-over.
+- **LEAVE-3** An employee requests leave: type, first day, last day, optional reason.
+- **LEAVE-4** Leave days = working days in the range: Saturdays, Sundays and public holidays are not counted.
+  The count is saved when the request is submitted.
+- **LEAVE-5** A request is refused when: the last day is before the first · the dates are in different years ·
+  there are no working days · the notice / "in the past" limit of LEAVE-1 is broken · it overlaps the
+  employee's other pending or approved leave · it needs more days than remain.
+- **LEAVE-6** Status flow: `pending` → `approved` / `rejected` (by HR) or `cancelled` (by the employee).
+  Approved leave can still be cancelled by the employee until it starts; the days come back automatically.
+- **LEAVE-7** HR cannot approve or reject their own request. Rejecting needs a comment. The balance is
+  checked again when approving.
 
-### 3.5 Dashboard (DASH)
+### 3.4 Public holidays (HOL)
 
-- **DASH-1** HR: active employees, employees per department, on leave today, pending requests.
-- **DASH-2** Employee: remaining days per leave type, latest requests.
+- **HOL-1** A list of public holidays (date + name), loaded into the database with a seed file.
+- **HOL-2** Everyone can see the list; holidays are not counted as leave days.
 
 ## 4. Business rules (summary)
 
-1. Records are deactivated (terminated), never deleted.
+1. Records are never deleted; employees are terminated instead.
 2. Employee code and email are unique.
-3. Leave cannot exceed the remaining balance and requests cannot overlap.
-4. Work week is Monday–Friday. Leave balances are per calendar year with no carry-over.
-5. All dates are stored in the company timezone.
+3. Work week is Monday–Friday; public holidays are not working days.
+4. Annual leave is planned (3 working days' notice); sick leave is unplanned (up to 7 days back).
+5. Balances are per calendar year; no carry-over; leave can't exceed the balance or overlap.
+6. Approved leave can be cancelled only before it starts.
 
 ## 5. Non-functional requirements
 
-- **API:** REST, JSON only, consistent error format, proper HTTP status codes, `/api/v1/...` prefix.
-- **Security:** hashed passwords, token auth, role check on every endpoint, prepared statements (PDO)
-  only, input validation on the server, only `public/` web-accessible, secrets only in `.env`.
-- **Validation:** frontend validates for UX; backend validates for correctness (source of truth).
-- **Pagination:** list endpoints are paginated.
-- **Frontend:** responsive (desktop first, usable on mobile), English-only UI.
-- **Code quality:** PSR-12 style, no framework, small readable classes.
+- REST + JSON, `/api/v1` prefix, one error format, correct HTTP status codes (see `API.md`).
+- Hashed passwords, hashed tokens, role check on every endpoint, prepared statements only, server-side
+  validation, only `public/` web-accessible, secrets only in `.env`.
+- Responsive English UI.
 
-## 6. Decisions
+## 6. Later versions
 
-| Question | Decision |
-|---|---|
-| Roles | HR and Employee only (HR is also the admin) |
-| Work week | Monday–Friday |
-| Annual leave carry-over | No — remaining days are counted per calendar year |
-| UI language | English only |
-
-## 7. Later versions (out of scope now)
-
-Kept for after the first version works end to end:
-
-- **Managers** approving their own team's leave (team-only access everywhere)
-- **Attendance:** check-in/out, lateness, monthly reports, HR corrections
-- **Payroll:** salaries, allowances/deductions, monthly payslips (USD)
-- **Positions** with salary ranges, separate user accounts and an Admin role
-- Leave-type management, manual balance adjustments, unpaid leave
-- Recruitment, performance reviews, documents, notifications
-
-## 8. Build order
-
-1. Foundation (`GET /health`) → 2. Departments → 3. Auth → 4. Employees → 5. Leave → 6. Dashboard
+Logout endpoint and password change · departments as a table · managing holidays in the app · a dashboard
+endpoint · more leave types and pro-rata days · managers approving their team · attendance · payroll.

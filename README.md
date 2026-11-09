@@ -72,9 +72,12 @@ npm run dev                               # http://localhost:5173
 ```
 
 - The dev server forwards `/api/*` to `http://hr.localhost`, so the backend needs no CORS setup.
-- With `VITE_USE_MOCKS=true`, the app uses a built-in fake API (`src/api/mock.ts`). Log in as
-  `admin@hr.test`, `hr@hr.test`, `manager@hr.test` or `employee@hr.test` with password `password`.
-  Set it to `false` once the real endpoints exist. Production builds never include the mocks.
+- With `VITE_USE_MOCKS=true`, the app runs on a built-in fake backend (`src/api/mock/`) that implements
+  `docs/API.md` (including roles and business rules) with demo data saved in the browser. Log in as
+  `hr@hr.test` (HR) or `employee@hr.test` (employee) with password `password`; "Reset demo data" on the
+  login page restores the original data.
+- Set `VITE_USE_MOCKS=false` (and restart `npm run dev`) to use the real PHP backend. Production builds
+  never include the fake backend.
 - `npm run build` type-checks and builds to `frontend/dist/`.
 
 ## Documentation

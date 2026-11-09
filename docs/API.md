@@ -1,338 +1,190 @@
 # HR Management System — API Contract
 
-Status: **v2.0 (simplified)** — based on `REQUIREMENTS.md` v2.0 and `DATABASE.md` v2.0. **24 endpoints.**
+Status: **v3.0 (minimal)** — based on `REQUIREMENTS.md` and `DATABASE.md` v3.0. **9 endpoints.**
 
-This document is the agreement between the backend (PHP) and the frontend (React).
-If the backend returns exactly what is written here, the frontend works. If something needs
-to change, change this document first, then both sides.
+The agreement between the backend (PHP) and the frontend (React). If the backend returns exactly what is
+written here, the frontend works.
 
 ## 1. Conventions
 
-### Base URL & headers
+- Base URL: `http://hr.localhost/api/v1`
+- Send `Content-Type: application/json` with a body, and `Authorization: Bearer <token>` on every endpoint
+  except login.
+- Field names are `snake_case`. Dates `YYYY-MM-DD`, date-times `YYYY-MM-DD HH:MM:SS`. Empty values are `null`.
+- The React dev server forwards `/api/*` to `hr.localhost`, so the backend needs **no CORS code**.
 
-```
-http://hr.localhost/api/v1
-```
+**Success:** `{ "data": … }`. Paginated lists add `"meta": { "page": 1, "per_page": 20, "total": 57, "total_pages": 3 }`
+and accept `?page=` and `?per_page=` (default 20, max 100).
 
-| Header | Value | When |
-|---|---|---|
-| `Content-Type` | `application/json` | requests with a body |
-| `Accept` | `application/json` | always |
-| `Authorization` | `Bearer <token>` | every endpoint except `POST /auth/login` and `GET /health` |
-
-During development the React app (Vite, `localhost:5173`) forwards `/api/*` to `http://hr.localhost`,
-so the browser sees one origin and **the backend needs no CORS code**.
-
-### Data formats
-
-| Type | Format | Example |
-|---|---|---|
-| IDs | integer | `12` |
-| Field names | `snake_case`, same as the database | `first_name` |
-| Date | `YYYY-MM-DD` | `"2026-11-04"` |
-| Date-time | `YYYY-MM-DD HH:MM:SS`, company timezone | `"2026-11-04 09:12:30"` |
-| Empty value | `null` (not `""`) | `"phone": null` |
-
-### Success responses
+**Errors** always look like this (`details` only for validation errors):
 
 ```json
-{ "data": { "id": 3, "name": "Engineering" } }
+{ "error": { "code": "VALIDATION_ERROR", "message": "The given data was invalid.",
+             "details": { "email": ["The email field is required."] } } }
 ```
-
-Paginated list:
-
-```json
-{
-  "data": [ { "id": 3, "name": "Engineering" } ],
-  "meta": { "page": 1, "per_page": 20, "total": 57, "total_pages": 3 }
-}
-```
-
-Lists accept `?page=1&per_page=20` (default 20, max 100). Action with nothing to return: `204 No Content`.
-
-### Error responses
-
-Every error has the same shape:
-
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "The given data was invalid.",
-    "details": {
-      "email": ["The email field is required."]
-    }
-  }
-}
-```
-
-`details` (field → messages) is present only for `VALIDATION_ERROR`.
 
 | HTTP | `code` | When |
 |---|---|---|
 | 400 | `BAD_REQUEST` | body is not valid JSON |
-| 401 | `UNAUTHENTICATED` | missing, invalid or expired token; wrong email/password |
-| 403 | `FORBIDDEN` | logged in, but the role isn't allowed |
+| 401 | `UNAUTHENTICATED` | missing/invalid/expired token, wrong email or password |
+| 403 | `FORBIDDEN` | logged in, but not allowed (role, or reviewing your own leave) |
 | 404 | `NOT_FOUND` | unknown route or record |
-| 409 | `CONFLICT` | duplicate value, record in use, or action not allowed in the current status |
+| 409 | `CONFLICT` | duplicate code/email, or an action the current status doesn't allow |
 | 422 | `VALIDATION_ERROR` | invalid fields (see `details`) |
-| 422 | `INSUFFICIENT_BALANCE` | leave request needs more days than remain |
-| 422 | `OVERLAPPING_REQUEST` | leave dates overlap a pending/approved request |
-| 500 | `SERVER_ERROR` | unexpected error — never expose PHP messages or SQL |
+| 422 | `INSUFFICIENT_BALANCE` | not enough leave days left |
+| 422 | `OVERLAPPING_REQUEST` | dates overlap another pending/approved request |
+| 500 | `SERVER_ERROR` | anything unexpected — never show PHP errors or SQL |
 
 ## 2. Endpoints
 
-`HR` = role `hr` only · `all` = any logged-in user.
-
-| # | Method | Path | Roles | Req. |
+| # | Method | Path | Who | Purpose |
 |---|---|---|---|---|
-| 1 | GET | `/health` | public | — |
-| | **Auth** | | | |
-| 2 | POST | `/auth/login` | public | AUTH-1 |
-| 3 | POST | `/auth/logout` | all | AUTH-3 |
-| 4 | GET | `/auth/me` | all | — |
-| 5 | PUT | `/auth/password` | all | AUTH-3 |
-| | **Departments** | | | |
-| 6 | GET | `/departments` | HR | DEPT-1 |
-| 7 | POST | `/departments` | HR | DEPT-1 |
-| 8 | PATCH | `/departments/{id}` | HR | DEPT-1 |
-| 9 | DELETE | `/departments/{id}` | HR | DEPT-2 |
-| | **Employees** | | | |
-| 10 | GET | `/employees` | HR | EMP-4 |
-| 11 | GET | `/employees/{id}` | HR | EMP-5 |
-| 12 | POST | `/employees` | HR | EMP-1 |
-| 13 | PATCH | `/employees/{id}` | HR | EMP-2 |
-| 14 | POST | `/employees/{id}/terminate` | HR | EMP-3 |
-| 15 | GET | `/employees/{id}/leave-balances` | HR | EMP-5 |
-| | **Leave** | | | |
-| 16 | GET | `/leave-types` | all | LEAVE-1 |
-| 17 | GET | `/me/leave-balances` | all | LEAVE-2 |
-| 18 | GET | `/me/leave-requests` | all | LEAVE-6 |
-| 19 | POST | `/leave-requests` | all | LEAVE-3–5 |
-| 20 | POST | `/leave-requests/{id}/cancel` | owner | LEAVE-6 |
-| 21 | GET | `/leave-requests` | HR | LEAVE-7 |
-| 22 | POST | `/leave-requests/{id}/approve` | HR | LEAVE-7–8 |
-| 23 | POST | `/leave-requests/{id}/reject` | HR | LEAVE-7 |
-| | **Dashboard** | | | |
-| 24 | GET | `/dashboard` | all | DASH-1–2 |
+| 1 | POST | `/auth/login` | public | Log in, get a token |
+| 2 | GET | `/me` | all | My profile + leave balances |
+| 3 | GET | `/employees` | HR | List / search employees |
+| 4 | POST | `/employees` | HR | Add an employee (and their login) |
+| 5 | PATCH | `/employees/{id}` | HR | Edit, reset password, or terminate |
+| 6 | GET | `/leave-requests` | all | Employees: their own. HR: everyone's |
+| 7 | POST | `/leave-requests` | all | Request leave |
+| 8 | PATCH | `/leave-requests/{id}` | all | HR approves/rejects; the owner cancels |
+| 9 | GET | `/holidays` | all | Public holidays of a year |
 
-> **Why `POST /leave-requests/{id}/approve` instead of `PATCH` with `status`?** Approving is an
-> *action* with its own rules (permission, balance re-check), not a field edit. One endpoint per action
-> keeps each rule in one place.
+## 3. Objects
 
-## 3. Shared objects
-
-### Employee summary
-
-```json
-{ "id": 12, "employee_code": "EMP-0012", "full_name": "Sara Ali" }
-```
-
-### Employee
+**Employee** (`password_hash` is never returned):
 
 ```json
 {
-  "id": 12,
-  "employee_code": "EMP-0012",
-  "first_name": "Sara",
-  "last_name": "Ali",
-  "full_name": "Sara Ali",
-  "email": "sara.ali@company.test",
-  "phone": "+1 555 0100",
-  "job_title": "Backend Developer",
-  "department": { "id": 3, "name": "Engineering" },
-  "hire_date": "2024-02-01",
-  "status": "active",
-  "termination_date": null,
-  "role": "employee",
-  "last_login_at": "2026-11-04 08:58:02",
-  "created_at": "2024-01-28 10:15:00",
-  "updated_at": "2026-10-02 14:40:11"
+  "id": 5, "employee_code": "EMP-0005", "first_name": "Sara", "last_name": "Ali", "full_name": "Sara Ali",
+  "email": "sara.ali@company.test", "phone": "+1 555 0105", "job_title": "Backend Developer",
+  "department": "Engineering", "hire_date": "2024-02-01", "status": "active", "termination_date": null,
+  "role": "employee", "last_login_at": "2026-11-09 08:58:02"
 }
 ```
 
-`password_hash` is **never** returned.
-
-### Leave balance
+**Leave balance** — one per leave type, including the type's rules (so the frontend can explain them):
 
 ```json
-{ "leave_type": { "id": 1, "name": "Annual" }, "year": 2026, "days_per_year": 21, "used_days": 6, "remaining_days": 15 }
+{ "type": "annual", "name": "Annual", "year": 2026, "days_per_year": 21, "used_days": 3,
+  "remaining_days": 18, "min_notice_days": 3, "max_backdate_days": 0 }
 ```
 
-### Leave request
+| `type` | `name` | `days_per_year` | `min_notice_days` (working days ahead) | `max_backdate_days` (days in the past) |
+|---|---|---|---|---|
+| `annual` | Annual | 21 | 3 | 0 |
+| `sick` | Sick | 10 | 0 | 7 |
+
+**Leave request:**
 
 ```json
 {
-  "id": 88,
-  "employee": { "id": 12, "employee_code": "EMP-0012", "full_name": "Sara Ali" },
-  "leave_type": { "id": 1, "name": "Annual" },
-  "start_date": "2026-11-16",
-  "end_date": "2026-11-20",
-  "days": 5,
-  "reason": "Family trip",
-  "status": "pending",
-  "reviewer": null,
-  "review_comment": null,
-  "reviewed_at": null,
-  "created_at": "2026-11-04 11:02:45"
+  "id": 88, "employee": { "id": 5, "employee_code": "EMP-0005", "full_name": "Sara Ali" },
+  "type": "annual", "start_date": "2026-11-23", "end_date": "2026-11-27", "days": 4,
+  "reason": "Family trip", "status": "pending", "reviewer": null, "review_comment": null,
+  "reviewed_at": null, "created_at": "2026-11-09 11:02:45"
 }
 ```
+
+`reviewer` has the same shape as `employee`. `days` excludes weekends and public holidays.
+
+**Holiday:** `{ "id": 3, "holiday_date": "2026-11-26", "name": "Thanksgiving Day" }`
 
 ## 4. Endpoint details
 
-Unless stated otherwise: `POST` returns `201` with the created object; `PATCH` accepts any subset of
-the create fields and returns `200` with the updated object.
+### 1. `POST /auth/login`
 
-### 4.1 Health
-
-`GET /health` → `200` `{ "data": { "status": "ok" } }`
-
-### 4.2 Auth
-
-`POST /auth/login`
+Body `{ "email": "…", "password": "…" }` → `200`:
 
 ```json
-{ "email": "sara.ali@company.test", "password": "secret-password" }
+{ "data": { "token": "64 hex characters", "expires_at": "2026-11-09 17:00:00", "user": { "…": "Employee" } } }
 ```
 
-`200`:
+`422` if a field is missing. `401` for a wrong email, wrong password **or** a terminated employee — always the
+same message ("Invalid email or password."), so nobody can find out which emails exist.
+
+### 2. `GET /me`
 
 ```json
-{ "data": { "token": "9f2c4e…64 hex chars…", "expires_at": "2026-11-04 17:00:00", "user": { "…": "Employee object" } } }
+{ "data": { "user": { "…": "Employee" }, "leave_balances": [ { "…": "annual" }, { "…": "sick" } ] } }
 ```
 
-Errors: `422` missing fields · `401` wrong email/password **or** terminated employee — same message
-for all, so nobody can find out which emails exist.
+Balances are for the current year. The frontend calls this on page load to restore the session.
 
-`POST /auth/logout` → `204`, deletes the current token.
+### 3. `GET /employees` (HR)
 
-`GET /auth/me` → `200` with the logged-in user's Employee object. Called on page load to restore the session.
+Query: `search` (name, code or email), `status` (`active` default, `terminated`, `all`), `page`, `per_page`.
+Sorted by last name. Paginated list of Employee objects.
 
-`PUT /auth/password` — `{ "current_password": "…", "new_password": "…" }` → `204`.
-`422` if `current_password` is wrong or `new_password` is shorter than 8 characters.
-
-### 4.3 Departments (HR)
-
-Department object:
+### 4. `POST /employees` (HR)
 
 ```json
-{ "id": 3, "name": "Engineering", "description": "Product development", "employee_count": 18 }
+{ "employee_code": "EMP-0057", "first_name": "Lina", "last_name": "Kamal", "email": "lina@company.test",
+  "phone": null, "job_title": "Frontend Developer", "department": "Engineering", "hire_date": "2026-11-10",
+  "role": "employee", "password": "initial-password" }
 ```
 
-`employee_count` counts active employees.
+`201` with the Employee. `422` for missing/invalid fields (`role` is `hr` or `employee`, `password` ≥ 8
+characters). `409` if `employee_code` or `email` already exists.
 
-- `GET /departments?search=eng` — paginated, sorted by name. `?all=true` returns all without pagination (dropdowns).
-- `POST /departments` — `{ "name", "description"? }`. `409` duplicate name.
-- `PATCH /departments/{id}` — same fields.
-- `DELETE /departments/{id}` — `204`, or `409` if any employee (active or terminated) belongs to it.
+### 5. `PATCH /employees/{id}` (HR)
 
-### 4.4 Employees (HR)
+Send only the fields to change — any field of `POST` except `employee_code`. Also:
 
-`GET /employees` — filters: `search` (name, code, email) · `department_id` · `status` (default `active`;
-`terminated`; `all`). Sorted by last name. Paginated list of Employee objects.
+- `password` — resets the password.
+- `status: "terminated"` **with** `termination_date` (≥ hire date) — terminates the employee: deletes their
+  tokens and cancels their `pending` leave and `approved` leave starting after the termination date
+  (`review_comment`: "Cancelled automatically: employee terminated."). Do all of it in **one transaction**.
 
-`POST /employees`
+`200` with the Employee. Errors: `404` unknown id · `422` invalid fields · `409` duplicate email, changing your
+own role, terminating yourself, or changing the status of an already terminated employee.
 
-```json
-{
-  "employee_code": "EMP-0057",
-  "first_name": "Lina",
-  "last_name": "Kamal",
-  "email": "lina.kamal@company.test",
-  "phone": null,
-  "job_title": "Frontend Developer",
-  "department_id": 3,
-  "hire_date": "2026-11-10",
-  "role": "employee",
-  "password": "initial-password"
-}
-```
+### 6. `GET /leave-requests`
 
-`201` with Employee. Errors: `409` duplicate `employee_code` or `email` · `422` invalid fields
-(`password` at least 8 characters, unknown department, invalid role).
+Query: `status`, `from` & `to` (requests touching that date range), `employee_id` (HR only), `page`, `per_page`.
 
-`PATCH /employees/{id}` — any create field except `employee_code`. `password` is optional and resets
-the password when given. An HR user cannot change their own `role` (`409`).
+- **Employee:** always only their own requests (`employee_id` is ignored). Newest first.
+- **HR:** everyone's. With `status=pending`, oldest first (the queue to work through); otherwise newest first.
 
-`POST /employees/{id}/terminate` — `{ "termination_date": "2026-12-31" }` → `200` with Employee.
-Deletes their tokens (logs them out). `409` if already terminated or if it is your own account.
+### 7. `POST /leave-requests`
 
-`GET /employees/{id}/leave-balances?year=2026` — list (not paginated) of Leave balance objects, one per
-leave type. `year` defaults to the current year.
+Body `{ "type": "annual", "start_date": "2026-11-23", "end_date": "2026-11-27", "reason": "Family trip" }`
+→ `201` with the Leave request (`status: "pending"`, `days` calculated by the server).
 
-### 4.5 Leave
+Check in this order:
 
-`GET /leave-types` → `{ "data": [ { "id": 1, "name": "Annual", "days_per_year": 21 }, … ] }` (not paginated).
+1. `422 VALIDATION_ERROR` — `type` not `annual`/`sick`, dates missing or invalid.
+2. `422` on `start_date` — planned type (`annual`) starting less than 3 working days ahead:
+   *"Annual leave must be requested at least 3 working days ahead (from 2026-11-12)."*
+3. `422` on `start_date` — starting further back than allowed: *"Sick leave can start at most 7 days in the
+   past."* / *"The start date cannot be in the past."*
+4. `422` on `end_date` — before the start, in a different year, or no working days in the range.
+5. `422 OVERLAPPING_REQUEST` — overlaps the employee's pending or approved leave.
+6. `422 INSUFFICIENT_BALANCE` — more days than remain for that type and year.
 
-`GET /me/leave-balances?year=2026` — same as the employee version above, for the logged-in user.
+### 8. `PATCH /leave-requests/{id}`
 
-`GET /me/leave-requests?status=pending` — paginated, newest first.
+Body `{ "status": "approved" | "rejected" | "cancelled", "comment": "…" }` → `200` with the Leave request.
 
-`POST /leave-requests`
+| New status | Who | Allowed when | Extra |
+|---|---|---|---|
+| `approved` | HR, not for their own request | status is `pending` | balance checked again (`422 INSUFFICIENT_BALANCE`); `comment` optional |
+| `rejected` | HR, not for their own request | status is `pending` | `comment` **required** (422) |
+| `cancelled` | the owner | `pending`, or `approved` and `start_date` after today | days come back automatically |
 
-```json
-{ "leave_type_id": 1, "start_date": "2026-11-16", "end_date": "2026-11-20", "reason": "Family trip" }
-```
+Errors: `404` unknown id, or an employee touching someone else's request · `403` HR reviewing their own
+request, or an employee approving/rejecting · `409` the current status doesn't allow it (e.g. leave already
+started) · `422` invalid `status`.
 
-`201` with Leave request; `days` is calculated by the server (Mon–Fri only). Errors:
-- `422 VALIDATION_ERROR` — missing/invalid fields, start in the past, end before start, start and end in
-  different years, no working days in the range
-- `422 OVERLAPPING_REQUEST` — overlaps a pending/approved request of the same employee
-- `422 INSUFFICIENT_BALANCE` — `days` is more than `remaining_days` for that type and year
+### 9. `GET /holidays`
 
-`POST /leave-requests/{id}/cancel` — no body. Owner only (others get `404`), only while `pending` (`409`). `200`.
-
-`GET /leave-requests` (HR) — filters: `status`, `employee_id`, `department_id`, and `from` & `to`
-(requests touching that date range). Paginated; `status=pending` is sorted oldest first, otherwise newest first.
-
-`POST /leave-requests/{id}/approve` — `{ "comment": "Enjoy!" }` (optional).
-`POST /leave-requests/{id}/reject` — `{ "comment": "Busy week, please pick another" }` (**required**).
-
-Both return `200` with the Leave request. Errors: `409` not `pending` · `403` reviewing your own
-request · `422 INSUFFICIENT_BALANCE` on approve if the remaining days changed since submission.
-
-### 4.6 Dashboard
-
-`GET /dashboard` — content depends on the role.
-
-HR:
-
-```json
-{
-  "data": {
-    "role_view": "hr",
-    "active_employees": 54,
-    "by_department": [ { "department": { "id": 3, "name": "Engineering" }, "count": 18 } ],
-    "on_leave_today": [
-      { "employee": { "id": 7, "employee_code": "EMP-0007", "full_name": "Lina Kamal" }, "leave_type": { "id": 1, "name": "Annual" }, "end_date": "2026-11-05" }
-    ],
-    "pending_leave_requests": 7
-  }
-}
-```
-
-Employee:
-
-```json
-{
-  "data": {
-    "role_view": "employee",
-    "leave_balances": [ { "…": "Leave balance objects" } ],
-    "recent_leave_requests": [ { "…": "up to 5 Leave request objects, newest first" } ]
-  }
-}
-```
+Query: `year` (default: current year). List (not paginated) of Holiday objects, sorted by date.
 
 ## 5. Build order
 
 | Phase | Endpoints | Tables |
 |---|---|---|
-| 0 Foundation | `GET /health` | — |
-| 1 Departments | #6–9 | `departments` |
-| 2 Auth | #2–5 | `employees`, `auth_tokens` (+ seed the first HR user) |
-| 3 Employees | #10–14 | — |
-| 4 Leave | #15–23 | `leave_types`, `leave_requests` |
-| 5 Dashboard | #24 | — |
-
-> Departments come before Auth so the first feature is the simplest one. Once Auth exists, go back and
-> protect the department routes with the auth and HR-role middleware.
+| 0 Foundation | — (a health check is optional) | — |
+| 1 Login | #1, #2 | `employees`, `auth_tokens` |
+| 2 Employees | #3, #4, #5 | — |
+| 3 Holidays | #9 | `public_holidays` |
+| 4 Leave | #6, #7, #8 | `leave_requests` |
