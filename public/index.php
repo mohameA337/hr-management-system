@@ -2,43 +2,36 @@
 
 declare(strict_types=1);
 
-use App\Config\App;
+// Front controller: Apache sends every request here (FallbackResource /index.php).
+
+use App\Config\Env;
+use App\Core\HttpException;
+use App\Core\Request;
+use App\Core\Response;
+use App\Core\Router;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-// Get request information
-$method = $_SERVER['REQUEST_METHOD'];
-$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+// 1. Settings
+Env::load(dirname(__DIR__) . '/.env');
+date_default_timezone_set(Env::get('APP_TIMEZONE', 'UTC'));
 
-// Set response type
-header('Content-Type: application/json; charset=utf-8');
+// 2. Routes
+$router = new Router();
+(require dirname(__DIR__) . '/src/routes.php')($router);
 
-// Health check route
-if ($method === 'GET' && $path === '/api/v1/health') {
-
-    // TODO 1: Return HTTP status 200
-    http_response_code(200);
-    $response = [
-        'data' => [
-            'status' => 'ok',
-        ],
-    ];
-
-    // TODO 2: Convert $response to JSON and echo it
-    echo json_encode($response, JSON_PRETTY_PRINT);
-
-} else {
-
-    // TODO 3: Return HTTP status 404
-http_response_code(404);
-    $response = [
-        'error' => [
-            'code' => 'NOT_FOUND',
-            'message' => 'Route not found',
-            'details' => [],
-        ],
-    ];
-
-    // TODO 4: Convert $response to JSON and echo it
-    echo json_encode($response, JSON_PRETTY_PRINT);
+// 3. Handle the request, and turn every error into a JSON error response.
+try {
+    $response = $router->dispatch(Request::fromGlobals());
+} catch (HttpException $e) {
+    // Errors we threw on purpose: 400, 401, 403, 404, 409, 422.
+    $response = Response::error($e);
+} catch (Throwable $e) {
+    // Bugs and unexpected problems (e.g. database down). The details go to
+    // /var/log/apache2/hr.localhost-error.log, never to the user.
+    error_log((string) $e);
+    $response = Response::error(new HttpException(500, 'SERVER_ERROR', 'Something went wrong. Please try again.'));
 }
+
+// 4. Send it
+$response->send();
