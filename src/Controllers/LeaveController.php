@@ -133,4 +133,80 @@ final class LeaveController
 
         return Response::data($leave, 201);
     }
+
+    public function update(Request $request): Response
+    {
+        $id = $request->param('id');
+        $user = $request->user();
+        $isHr = $user['role'] === 'hr';
+        $userId = (int) $user['id'];
+        $leave = LeaveRequest::find($id);
+        if ($leave === null || (!$isHr && $leave['employee']['id'] !== $userId)) {
+            throw HttpException::notFound('Leave request');
+        }
+
+        $validator = new Validator($request);
+        $status = $request->input('status');
+        $comment = $request->input('comment');
+        if (!in_array($status, ['approved', 'rejected', 'cancelled'], true)) {
+            $validator->add('status', 'Choose approved, rejected, or cancelled.');
+        }
+        if ($comment !== null && (!is_string($comment) || strlen($comment) > 255)) {
+            $validator->add('comment', 'Enter a comment of at most 255 bytes.');
+        } elseif ($status === 'rejected' && ($comment === null || trim($comment) === '')) {
+            $validator->add('comment', 'The comment field is required.');
+        }
+        $validator->throwIfFailed();
+        $comment = $comment === null || trim($comment) === '' ? null : trim($comment);
+
+        $employeeId = $leave['employee']['id'];
+        $isOwner = $employeeId === $userId;
+        $pdo = Database::connection();
+        $pdo->beginTransaction();
+        try {
+            // Use the same employee lock as submission and termination.
+            Employee::find($employeeId, true);
+            $leave = LeaveRequest::find($id);
+            if ($leave === null) {
+                throw HttpException::notFound('Leave request');
+            }
+
+            if ($status === 'cancelled') {
+                if (!$isOwner) {
+                    throw HttpException::forbidden('Only the employee can cancel their own leave.');
+                }
+                $upcoming = $leave['status'] === 'approved' && $leave['start_date'] > date('Y-m-d');
+                if ($leave['status'] !== 'pending' && !$upcoming) {
+                    throw HttpException::conflict('This leave request cannot be cancelled.');
+                }
+                LeaveRequest::cancel($id);
+            } else {
+                if (!$isHr || $isOwner) {
+                    throw HttpException::forbidden('Only HR can review another employee’s leave.');
+                }
+                if ($leave['status'] !== 'pending') {
+                    throw HttpException::conflict('Only pending leave requests can be reviewed.');
+                }
+                if ($status === 'approved') {
+                    $type = $leave['type'];
+                    $year = (int) substr($leave['start_date'], 0, 4);
+                    $used = LeaveRequest::approvedDays($employeeId, $type, $year);
+                    if ($leave['days'] > LeavePolicy::TYPES[$type]['days_per_year'] - $used) {
+                        throw new HttpException(422, 'INSUFFICIENT_BALANCE', 'You do not have enough leave days remaining.');
+                    }
+                }
+                LeaveRequest::review($id, $status, $userId, $comment, date('Y-m-d H:i:s'));
+            }
+
+            $updated = LeaveRequest::find($id);
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $error;
+        }
+
+        return Response::data($updated);
+    }
 }

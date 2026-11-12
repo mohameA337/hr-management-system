@@ -25,6 +25,8 @@ return function (Router $router): void {
     $router->add('PATCH', '/api/v1/employees/{id}', [EmployeeController::class, 'update'], $hr);
 
     $router->add('GET', '/api/v1/holidays', [HolidayController::class, 'index'], [AuthMiddleware::class]);
-    $router->add('GET', '/api/v1/leave-requests', [LeaveController::class, 'index'], [AuthMiddleware::class]);
-    $router->add('POST', '/api/v1/leave-requests', [LeaveController::class, 'store'], [AuthMiddleware::class]);
+    $auth = [AuthMiddleware::class];
+    $router->add('GET', '/api/v1/leave-requests', [LeaveController::class, 'index'], $auth);
+    $router->add('POST', '/api/v1/leave-requests', [LeaveController::class, 'store'], $auth);
+    $router->add('PATCH', '/api/v1/leave-requests/{id}', [LeaveController::class, 'update'], $auth);
 };

@@ -95,6 +95,20 @@ final class LeaveRequest
         return (int) $pdo->lastInsertId();
     }
 
+    public static function cancel(int $id): void
+    {
+        $statement = Database::connection()->prepare("UPDATE leave_requests SET status = 'cancelled' WHERE id = ?");
+        $statement->execute([$id]);
+    }
+
+    public static function review(int $id, string $status, int $reviewerId, ?string $comment, string $reviewedAt): void
+    {
+        $statement = Database::connection()->prepare(
+            'UPDATE leave_requests SET status = ?, reviewed_by = ?, review_comment = ?, reviewed_at = ? WHERE id = ?'
+        );
+        $statement->execute([$status, $reviewerId, $comment, $reviewedAt, $id]);
+    }
+
     private static function present(array $row): array
     {
         $reviewer = null;
