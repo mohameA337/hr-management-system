@@ -62,6 +62,39 @@ final class LeaveRequest
         return ['rows' => $rows, 'total' => (int) $count->fetchColumn()];
     }
 
+    public static function find(int $id): ?array
+    {
+        $statement = Database::connection()->prepare(self::SELECT_WITH_PEOPLE . ' WHERE l.id = ?');
+        $statement->execute([$id]);
+        $row = $statement->fetch();
+
+        return $row === false ? null : self::present($row);
+    }
+
+    public static function hasOverlap(int $employeeId, string $start, string $end): bool
+    {
+        $statement = Database::connection()->prepare(
+            "SELECT id FROM leave_requests
+             WHERE employee_id = ? AND status IN ('pending', 'approved')
+               AND start_date <= ? AND end_date >= ? LIMIT 1"
+        );
+        $statement->execute([$employeeId, $end, $start]);
+
+        return $statement->fetchColumn() !== false;
+    }
+
+    public static function create(int $employeeId, string $type, string $start, string $end, int $days, ?string $reason): int
+    {
+        $pdo = Database::connection();
+        $statement = $pdo->prepare(
+            'INSERT INTO leave_requests (employee_id, type, start_date, end_date, days, reason)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $statement->execute([$employeeId, $type, $start, $end, $days, $reason]);
+
+        return (int) $pdo->lastInsertId();
+    }
+
     private static function present(array $row): array
     {
         $reviewer = null;

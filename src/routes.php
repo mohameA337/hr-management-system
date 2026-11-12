@@ -26,4 +26,5 @@ return function (Router $router): void {
 
     $router->add('GET', '/api/v1/holidays', [HolidayController::class, 'index'], [AuthMiddleware::class]);
     $router->add('GET', '/api/v1/leave-requests', [LeaveController::class, 'index'], [AuthMiddleware::class]);
+    $router->add('POST', '/api/v1/leave-requests', [LeaveController::class, 'store'], [AuthMiddleware::class]);
 };
