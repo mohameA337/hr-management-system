@@ -5,9 +5,47 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Config\Database;
+use PDO;
 
 final class Employee
 {
+    public static function paginate(string $status, string $search, int $page, int $perPage): array
+    {
+        $conditions = [];
+        $values = [];
+
+        if ($status !== 'all') {
+            $conditions[] = 'status = :status';
+            $values['status'] = $status;
+        }
+
+        if ($search !== '') {
+            $conditions[] = "(CONCAT(first_name, ' ', last_name) LIKE :name
+                              OR email LIKE :email OR employee_code LIKE :code)";
+            $pattern = '%' . $search . '%';
+            $values['name'] = $pattern;
+            $values['email'] = $pattern;
+            $values['code'] = $pattern;
+        }
+
+        $where = $conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions);
+        $pdo = Database::connection();
+        $count = $pdo->prepare('SELECT COUNT(*) FROM employees' . $where);
+        $count->execute($values);
+
+        $statement = $pdo->prepare(
+            'SELECT * FROM employees' . $where . ' ORDER BY last_name, first_name, id LIMIT :limit OFFSET :offset'
+        );
+        foreach ($values as $key => $value) {
+            $statement->bindValue(':' . $key, $value);
+        }
+        $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);
+        $statement->execute();
+
+        return ['rows' => $statement->fetchAll(), 'total' => (int) $count->fetchColumn()];
+    }
+
     public static function findByEmail(string $email): ?array
     {
         $statement = Database::connection()->prepare('SELECT * FROM employees WHERE email = ?');
