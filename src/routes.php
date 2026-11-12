@@ -20,6 +20,7 @@ return function (Router $router): void {
     $hr = [AuthMiddleware::class, HrMiddleware::class];
     $router->add('GET', '/api/v1/employees', [EmployeeController::class, 'index'], $hr);
     $router->add('POST', '/api/v1/employees', [EmployeeController::class, 'store'], $hr);
+    $router->add('PATCH', '/api/v1/employees/{id}', [EmployeeController::class, 'update'], $hr);
 
     // Phase 3: holidays
     // Phase 4: leave requests

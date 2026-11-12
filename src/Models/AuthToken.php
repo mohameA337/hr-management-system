@@ -8,6 +8,12 @@ use App\Config\Database;
 
 final class AuthToken
 {
+    public static function deleteForEmployee(int $employeeId): void
+    {
+        $statement = Database::connection()->prepare('DELETE FROM auth_tokens WHERE employee_id = ?');
+        $statement->execute([$employeeId]);
+    }
+
     public static function create(int $employeeId, string $hash, string $expiresAt): void
     {
         $statement = Database::connection()->prepare(

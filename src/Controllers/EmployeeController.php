@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Config\Database;
 use App\Core\HttpException;
 use App\Core\Request;
 use App\Core\Response;
 use App\Core\Validator;
+use App\Models\AuthToken;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
 use DateTimeImmutable;
 use PDOException;
+use Throwable;
 
 final class EmployeeController
 {
@@ -62,6 +66,74 @@ final class EmployeeController
         }
 
         return Response::data(Employee::present(Employee::find($id)), 201);
+    }
+
+    public function update(Request $request): Response
+    {
+        $id = $request->param('id');
+        $pdo = Database::connection();
+        $pdo->beginTransaction();
+
+        try {
+            // Keep the employee stable while checking and applying the update.
+            $employee = Employee::find($id, true);
+            if ($employee === null) {
+                throw HttpException::notFound('Employee');
+            }
+
+            $validator = new Validator($request);
+            $changes = $this->employeeFields($request, $validator, true);
+            $terminating = $request->input('status') === 'terminated';
+            if ($request->has('status') && !$terminating) {
+                $validator->add('status', 'The status can only be changed to terminated.');
+            }
+
+            $hireDate = $changes['hire_date'] ?? $employee['hire_date'];
+            if ($terminating) {
+                $date = $validator->requiredString('termination_date', 'termination date', 10);
+                if ($date !== null && (!$this->isDate($date) || $date < $hireDate)) {
+                    $validator->add('termination_date', 'Enter a valid date on or after the hire date.');
+                }
+                $changes['status'] = 'terminated';
+                $changes['termination_date'] = $date;
+            } elseif ($request->has('termination_date')) {
+                $validator->add('termination_date', 'Send a termination date when changing status to terminated.');
+            } elseif ($employee['termination_date'] !== null && $hireDate > $employee['termination_date']) {
+                $validator->add('hire_date', 'The hire date must be on or before the termination date.');
+            }
+            $validator->throwIfFailed();
+
+            $isOwnAccount = $id === (int) $request->user()['id'];
+            if ($isOwnAccount && isset($changes['role']) && $changes['role'] !== $employee['role']) {
+                throw HttpException::conflict('You cannot change your own role.');
+            }
+            if ($terminating && ($isOwnAccount || $employee['status'] === 'terminated')) {
+                throw HttpException::conflict('You cannot terminate yourself or an already terminated employee.');
+            }
+            if (isset($changes['password'])) {
+                $changes['password_hash'] = password_hash($changes['password'], PASSWORD_DEFAULT);
+                unset($changes['password']);
+            }
+
+            Employee::update($id, $changes);
+            if ($terminating) {
+                AuthToken::deleteForEmployee($id);
+                LeaveRequest::cancelForTermination($id, $changes['termination_date']);
+            }
+
+            $updated = Employee::find($id);
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            if ($error instanceof PDOException && (int) ($error->errorInfo[1] ?? 0) === 1062) {
+                throw HttpException::conflict('The email is already in use.');
+            }
+            throw $error;
+        }
+
+        return Response::data(Employee::present($updated));
     }
 
     private function employeeFields(Request $request, Validator $validator, bool $partial): array

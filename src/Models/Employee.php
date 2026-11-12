@@ -69,13 +69,40 @@ final class Employee
         return (int) $pdo->lastInsertId();
     }
 
-    public static function find(int $id): ?array
+    public static function find(int $id, bool $forUpdate = false): ?array
     {
-        $statement = Database::connection()->prepare('SELECT * FROM employees WHERE id = ?');
+        $sql = 'SELECT * FROM employees WHERE id = ?';
+        if ($forUpdate) {
+            $sql .= ' FOR UPDATE';
+        }
+        $statement = Database::connection()->prepare($sql);
         $statement->execute([$id]);
         $employee = $statement->fetch();
 
         return $employee === false ? null : $employee;
+    }
+
+    public static function update(int $id, array $changes): void
+    {
+        $columns = ['first_name', 'last_name', 'email', 'phone', 'job_title', 'department',
+            'hire_date', 'role', 'password_hash', 'status', 'termination_date'];
+        $assignments = [];
+        $values = [];
+
+        foreach ($columns as $column) {
+            if (array_key_exists($column, $changes)) {
+                $assignments[] = "$column = ?";
+                $values[] = $changes[$column];
+            }
+        }
+
+        if ($assignments === []) {
+            return;
+        }
+
+        $values[] = $id;
+        $sql = 'UPDATE employees SET ' . implode(', ', $assignments) . ' WHERE id = ?';
+        Database::connection()->prepare($sql)->execute($values);
     }
 
     public static function touchLastLogin(int $id, string $loggedInAt): void
