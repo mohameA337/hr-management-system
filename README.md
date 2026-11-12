@@ -14,7 +14,6 @@ The PHP backend currently supports login and the signed-in employee profile with
 | [database/migrations/](database/migrations/) | SQL files that create the employees, tokens, leave requests, and holidays tables. |
 | [database/seeds/](database/seeds/) | SQL files that load the sample public holidays. |
 | [frontend/](frontend/) | React pages, components, and the API client. |
-| [docs/](docs/) | Requirements, API contract, database design, and implementation guides. |
 | [tests/](tests/) | Reserved for automated tests. The current smoke checks are listed below. |
 
 [composer.json](composer.json) declares the PHP requirements and autoload mapping. For example, when PHP first needs `App\Core\Request`, Composer loads `src/Core/Request.php`. [.env.example](.env.example) lists the settings you copy into your local `.env`.
@@ -154,22 +153,12 @@ npm run dev                               # http://localhost:5173
 ```
 
 - The dev server forwards `/api/*` to `http://hr.localhost`, so the backend needs no CORS setup.
-- With `VITE_USE_MOCKS=true`, the app runs on a built-in fake backend (`src/api/mock/`) that implements
-  [the API contract](docs/API.md) (including roles and business rules) with demo data saved in the browser. Log in as
+- With `VITE_USE_MOCKS=true`, the app runs on a built-in mock API with demo data saved in the browser. Log in as
   `hr@hr.test` (HR) or `employee@hr.test` (employee) with password `password`; "Reset demo data" on the
   login page restores the original data.
 - Set `VITE_USE_MOCKS=false` (and restart `npm run dev`) to use the real PHP backend. Production builds
   should also use the real backend. Pages that depend on planned endpoints need mock mode until those endpoints are implemented.
 - `npm run build` type-checks and builds to `frontend/dist/`.
-
-## Documentation
-
-- [Project brief](docs/PROJECT_BRIEF.md) explains the problem, scope, and acceptance criteria.
-- [Requirements](docs/REQUIREMENTS.md) defines features, roles, and business rules.
-- [Database design](docs/DATABASE.md) describes tables, relationships, and constraints.
-- [API contract](docs/API.md) specifies endpoints, inputs, responses, and errors.
-- [Backend guide](docs/BACKEND_GUIDE.md) shows the implementation plan and PHP examples.
-- [Learning backlog](docs/BACKEND_BACKLOG.md) breaks the work into file-by-file exercises and curl checks.
 
 ## Security notes
 
