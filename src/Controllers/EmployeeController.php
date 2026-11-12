@@ -12,7 +12,6 @@ use App\Core\Validator;
 use App\Models\AuthToken;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
-use DateTimeImmutable;
 use PDOException;
 use Throwable;
 
@@ -91,7 +90,7 @@ final class EmployeeController
             $hireDate = $changes['hire_date'] ?? $employee['hire_date'];
             if ($terminating) {
                 $date = $validator->requiredString('termination_date', 'termination date', 10);
-                if ($date !== null && (!$this->isDate($date) || $date < $hireDate)) {
+                if ($date !== null && (!Validator::isDate($date) || $date < $hireDate)) {
                     $validator->add('termination_date', 'Enter a valid date on or after the hire date.');
                 }
                 $changes['status'] = 'terminated';
@@ -172,7 +171,7 @@ final class EmployeeController
             $validator->add('role', 'Choose hr or employee.');
         }
 
-        if (isset($fields['hire_date']) && !$this->isDate($fields['hire_date'])) {
+        if (isset($fields['hire_date']) && !Validator::isDate($fields['hire_date'])) {
             $validator->add('hire_date', 'Enter a valid date in YYYY-MM-DD format.');
         }
 
@@ -193,16 +192,5 @@ final class EmployeeController
         }
 
         return $fields;
-    }
-
-    private function isDate(string $value): bool
-    {
-        if (!preg_match('/^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$/D', $value)) {
-            return false;
-        }
-
-        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
-
-        return $date !== false && $date->format('Y-m-d') === $value;
     }
 }

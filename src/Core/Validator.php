@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use DateTimeImmutable;
+
 final class Validator
 {
     private array $errors = [];
@@ -45,5 +47,16 @@ final class Validator
         if ($this->errors !== []) {
             throw new HttpException(422, 'VALIDATION_ERROR', 'The given data was invalid.', $this->errors);
         }
+    }
+
+    public static function isDate(string $value): bool
+    {
+        if (!preg_match('/^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$/D', $value)) {
+            return false;
+        }
+
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        return $date !== false && $date->format('Y-m-d') === $value;
     }
 }
