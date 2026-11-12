@@ -55,6 +55,20 @@ final class Employee
         return $employee === false ? null : $employee;
     }
 
+    public static function create(array $employee): int
+    {
+        $pdo = Database::connection();
+        $statement = $pdo->prepare(
+            'INSERT INTO employees
+                (employee_code, first_name, last_name, email, phone, job_title, department, hire_date, role, password_hash)
+             VALUES
+                (:employee_code, :first_name, :last_name, :email, :phone, :job_title, :department, :hire_date, :role, :password_hash)'
+        );
+        $statement->execute($employee);
+
+        return (int) $pdo->lastInsertId();
+    }
+
     public static function find(int $id): ?array
     {
         $statement = Database::connection()->prepare('SELECT * FROM employees WHERE id = ?');
