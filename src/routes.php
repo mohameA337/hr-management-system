@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controllers\AuthController;
 use App\Controllers\EmployeeController;
 use App\Controllers\HealthController;
+use App\Controllers\HolidayController;
 use App\Core\Router;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\HrMiddleware;
@@ -22,6 +23,6 @@ return function (Router $router): void {
     $router->add('POST', '/api/v1/employees', [EmployeeController::class, 'store'], $hr);
     $router->add('PATCH', '/api/v1/employees/{id}', [EmployeeController::class, 'update'], $hr);
 
-    // Phase 3: holidays
+    $router->add('GET', '/api/v1/holidays', [HolidayController::class, 'index'], [AuthMiddleware::class]);
     // Phase 4: leave requests
 };
